@@ -159,7 +159,6 @@ server.tool(
 // START SERVER (Cloud/SSE Version)
 // ==========================================
 const app = express();
-app.use(express.json());
 
 let transport: SSEServerTransport | null = null;
 
@@ -168,8 +167,6 @@ app.get("/sse", async (req, res) => {
   try {
     console.log("New connection request received.");
     
-    // If Claude disconnects and reconnects, safely close the old transport first
-    // to prevent the 500 "already connected" crash.
     if (transport) {
       try {
         await transport.close();
@@ -178,7 +175,7 @@ app.get("/sse", async (req, res) => {
       }
     }
     
-    // Set the transport to point back to this exact same route ("/sse") for messages
+
     transport = new SSEServerTransport("/sse", res);
     await server.connect(transport);
     console.log("Claude Desktop connected successfully via SSE!");
@@ -189,8 +186,8 @@ app.get("/sse", async (req, res) => {
   }
 });
 
-// 2. The message receiving endpoint (POST)
-// Note: We changed this from "/message" to "/sse" to match the GET route perfectly
+
+
 app.post("/sse", async (req, res) => {
   if (!transport) {
     res.status(503).send("SSE connection not established");
@@ -203,11 +200,13 @@ app.post("/sse", async (req, res) => {
   }
 });
 
-// 3. Boot up the server
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Cloud Accountability MCP Server running on port ${PORT}`);
 });
+
+
 // // ==========================================
 // // START SERVER
 // // ==========================================
