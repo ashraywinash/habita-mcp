@@ -166,7 +166,12 @@ let transport: SSEServerTransport | null = null;
 app.get("/sse", async (req, res) => {
   try {
     console.log("New connection request received.");
-    
+
+    // CRITICAL FIX 1: Tell Render's proxy NOT to buffer the SSE stream.
+    // Without this, Render holds the responses hostage, causing 60s timeouts!
+    res.setHeader("X-Accel-Buffering", "no");
+
+    // Safely clean up old connection if Claude reconnects
     if (transport) {
       try {
         await transport.close();
@@ -174,21 +179,23 @@ app.get("/sse", async (req, res) => {
         console.error("Error closing previous transport", e);
       }
     }
-    
 
-    transport = new SSEServerTransport("/sse", res);
+    // CRITICAL FIX 2: Explicitly separate the POST route name ("/message")
+    // from the GET route name ("/sse") to prevent proxy confusion.
+    transport = new SSEServerTransport("/message", res);
     await server.connect(transport);
+
     console.log("Claude Desktop connected successfully via SSE!");
-    
+
   } catch (error) {
     console.error("Fatal SSE Connection Error:", error);
     res.status(500).send("Internal Server Error");
   }
 });
 
-
-
-app.post("/sse", async (req, res) => {
+// 2. The message receiving endpoint (POST)
+// Notice this now perfectly matches the "/message" path defined above
+app.post("/message", async (req, res) => {
   if (!transport) {
     res.status(503).send("SSE connection not established");
     return;
@@ -200,12 +207,11 @@ app.post("/sse", async (req, res) => {
   }
 });
 
-
+// 3. Boot up the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Cloud Accountability MCP Server running on port ${PORT}`);
 });
-
 
 // // ==========================================
 // // START SERVER
