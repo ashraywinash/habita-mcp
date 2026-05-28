@@ -159,25 +159,48 @@ server.tool(
 // START SERVER (Cloud/SSE Version)
 // ==========================================
 const app = express();
-app.use(express.json()); // Allow Express to parse JSON bodies
+app.use(express.json());
 
-let transport: SSEServerTransport;
+let transport: SSEServerTransport | null = null;
 
-// 1. The connection endpoint
+// 1. The connection endpoint (GET)
 app.get("/sse", async (req, res) => {
-  // Create a new SSE transport and point the message endpoint to /message
-  transport = new SSEServerTransport("/message", res);
-  await server.connect(transport);
-  console.log("New Claude Desktop client connected via SSE!");
+  try {
+    console.log("New connection request received.");
+    
+    // If Claude disconnects and reconnects, safely close the old transport first
+    // to prevent the 500 "already connected" crash.
+    if (transport) {
+      try {
+        await transport.close();
+      } catch (e) {
+        console.error("Error closing previous transport", e);
+      }
+    }
+    
+    // Set the transport to point back to this exact same route ("/sse") for messages
+    transport = new SSEServerTransport("/sse", res);
+    await server.connect(transport);
+    console.log("Claude Desktop connected successfully via SSE!");
+    
+  } catch (error) {
+    console.error("Fatal SSE Connection Error:", error);
+    res.status(500).send("Internal Server Error");
+  }
 });
 
-// 2. The message receiving endpoint
-app.post("/message", async (req, res) => {
+// 2. The message receiving endpoint (POST)
+// Note: We changed this from "/message" to "/sse" to match the GET route perfectly
+app.post("/sse", async (req, res) => {
   if (!transport) {
     res.status(503).send("SSE connection not established");
     return;
   }
-  await transport.handlePostMessage(req, res);
+  try {
+    await transport.handlePostMessage(req, res);
+  } catch (error) {
+    console.error("Failed to handle post message:", error);
+  }
 });
 
 // 3. Boot up the server
@@ -185,7 +208,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Cloud Accountability MCP Server running on port ${PORT}`);
 });
-
 // // ==========================================
 // // START SERVER
 // // ==========================================
